@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.database import init_db, close_db
-from app.api import events
+from app.api import events, tickets, users, recommendations
 
 
 @asynccontextmanager
@@ -84,6 +84,9 @@ async def root():
 
 # Include routers
 app.include_router(events.router, prefix=settings.API_PREFIX)
+app.include_router(tickets.router, prefix=settings.API_PREFIX)
+app.include_router(users.router, prefix=settings.API_PREFIX)
+app.include_router(recommendations.router, prefix=settings.API_PREFIX)
 
 
 if __name__ == "__main__":

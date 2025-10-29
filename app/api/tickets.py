@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies.auth import get_current_user
+from app.models.user import User
 from app.schemas.ticket import (
     TicketReserve,
     TicketResponse,
@@ -31,31 +33,34 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
     response_model=TicketResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Reserve a ticket",
-    description="Reserve a ticket for a user at an event. Ticket expires in 2 minutes if not paid.",
+    description="Reserve a ticket for the authenticated user at an event. Ticket expires in 2 minutes if not paid.",
 )
 async def reserve_ticket(
     reservation_data: TicketReserve,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TicketResponse:
     """
-    Reserve a ticket for a user.
+    Reserve a ticket for the authenticated user.
 
     This endpoint implements atomic reservation with database locking to prevent overselling.
 
     Args:
-        reservation_data: Reservation data (user_id, event_id)
+        reservation_data: Reservation data (event_id)
+        current_user: Authenticated user (from JWT)
         db: Database session
 
     Returns:
         Created ticket
 
     Raises:
-        HTTPException 404: If event or user not found
+        HTTPException 401: If not authenticated
+        HTTPException 404: If event not found
         HTTPException 409: If event is sold out
     """
     try:
         service = TicketService(db)
-        ticket = await service.reserve_ticket(reservation_data)
+        ticket = await service.reserve_ticket(current_user.id, reservation_data)
         return ticket
     except EventNotFoundException as e:
         raise HTTPException(
@@ -84,11 +89,12 @@ async def reserve_ticket(
     response_model=TicketResponse,
     status_code=status.HTTP_200_OK,
     summary="Mark ticket as paid",
-    description="Mark a reserved ticket as paid. Cannot pay for expired tickets.",
+    description="Mark a reserved ticket as paid. Cannot pay for expired tickets. Users can only pay for their own tickets.",
 )
 async def pay_for_ticket(
     ticket_id: UUID = Path(..., description="Ticket ID"),
     payment_data: TicketPayment = None,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TicketResponse:
     """
@@ -97,18 +103,36 @@ async def pay_for_ticket(
     Args:
         ticket_id: Ticket UUID
         payment_data: Payment information (currently unused)
+        current_user: Authenticated user (from JWT)
         db: Database session
 
     Returns:
         Updated ticket
 
     Raises:
+        HTTPException 401: If not authenticated
+        HTTPException 403: If user doesn't own the ticket
         HTTPException 404: If ticket not found
         HTTPException 409: If ticket is not reserved or invalid status
         HTTPException 410: If ticket has expired
     """
     try:
         service = TicketService(db)
+
+        # First, check if ticket exists and user owns it
+        from app.repositories.ticket_repository import TicketRepository
+        ticket_repo = TicketRepository(db)
+        ticket = await ticket_repo.get_by_id(ticket_id)
+
+        if not ticket:
+            raise TicketNotFoundException(f"Ticket with ID {ticket_id} not found")
+
+        if ticket.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only pay for your own tickets",
+            )
+
         ticket = await service.mark_ticket_paid(ticket_id)
         return ticket
     except TicketNotFoundException as e:
@@ -126,6 +150,8 @@ async def pay_for_ticket(
             status_code=status.HTTP_410_GONE,
             detail=str(e),
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -138,9 +164,11 @@ async def pay_for_ticket(
     response_model=TicketResponse,
     status_code=status.HTTP_200_OK,
     summary="Get ticket by ID",
+    description="Get ticket details by ID. Users can only view their own tickets.",
 )
 async def get_ticket(
     ticket_id: UUID = Path(..., description="Ticket ID"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TicketResponse:
     """
@@ -148,12 +176,15 @@ async def get_ticket(
 
     Args:
         ticket_id: Ticket UUID
+        current_user: Authenticated user (from JWT)
         db: Database session
 
     Returns:
         Ticket details
 
     Raises:
+        HTTPException 401: If not authenticated
+        HTTPException 403: If user doesn't own the ticket
         HTTPException 404: If ticket not found
     """
     try:
@@ -164,6 +195,17 @@ async def get_ticket(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Ticket with ID {ticket_id} not found",
+            )
+
+        # Check if ticket belongs to user
+        from app.repositories.ticket_repository import TicketRepository
+        ticket_repo = TicketRepository(db)
+        ticket_obj = await ticket_repo.get_by_id(ticket_id)
+
+        if ticket_obj and ticket_obj.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own tickets",
             )
 
         return ticket
@@ -177,39 +219,42 @@ async def get_ticket(
 
 
 @router.get(
-    "/user/{user_id}",
+    "/my-tickets",
     response_model=TicketListResponse,
     status_code=status.HTTP_200_OK,
-    summary="Get user's ticket history",
-    description="Get all tickets for a specific user with optional status filter.",
+    summary="Get my ticket history",
+    description="Get all tickets for the authenticated user with optional status filter.",
 )
-async def get_user_tickets(
-    user_id: UUID = Path(..., description="User ID"),
+async def get_my_tickets(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
-    status: Optional[TicketStatus] = Query(None, description="Filter by ticket status"),
+    status_filter: Optional[TicketStatus] = Query(None, alias="status", description="Filter by ticket status"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TicketListResponse:
     """
-    Get all tickets for a user.
+    Get all tickets for the authenticated user.
 
     Args:
-        user_id: User UUID
         skip: Number of records to skip (for pagination)
         limit: Maximum number of records to return
-        status: Filter by ticket status (optional)
+        status_filter: Filter by ticket status (optional)
+        current_user: Authenticated user (from JWT)
         db: Database session
 
     Returns:
         Paginated list of tickets
+
+    Raises:
+        HTTPException 401: If not authenticated
     """
     try:
         service = TicketService(db)
         tickets = await service.get_user_tickets(
-            user_id=user_id,
+            user_id=current_user.id,
             skip=skip,
             limit=limit,
-            status=status,
+            status=status_filter,
         )
         return tickets
     except Exception as e:

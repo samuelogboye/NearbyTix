@@ -1,5 +1,5 @@
 # Multi-stage build for optimized image size
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -27,8 +27,8 @@ RUN apt-get update && apt-get install -y \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+# Copy globally installed dependencies
+COPY --from=builder /usr/local /usr/local
 
 # Make sure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH

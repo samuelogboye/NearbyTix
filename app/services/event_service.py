@@ -3,11 +3,12 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, cast
+import geoalchemy2
 from geoalchemy2 import functions as geo_func
-from sqlalchemy import select
 
 from app.repositories.event_repository import EventRepository
-from app.schemas.event import EventCreate, EventResponse, EventListItem, EventListResponse
+from app.schemas.event import EventCreate, EventResponse, EventListItem, EventListResponse, EventUpdate
 from app.models.event import Event
 
 
@@ -19,11 +20,12 @@ class EventService:
         self.db = db
         self.repository = EventRepository(db)
 
-    async def create_event(self, event_data: EventCreate) -> EventResponse:
+    async def create_event(self, creator_id: UUID, event_data: EventCreate) -> EventResponse:
         """
         Create a new event.
 
         Args:
+            creator_id: User ID of the event creator
             event_data: Event creation data
 
         Returns:
@@ -38,6 +40,7 @@ class EventService:
 
         # Create event
         event = await self.repository.create(
+            creator_id=creator_id,
             title=event_data.title,
             description=event_data.description,
             start_time=start_time_utc,
@@ -124,10 +127,11 @@ class EventService:
             return (0.0, 0.0)
 
         # Query to extract coordinates from geography type
+        # Cast Geography to Geometry to use ST_Y and ST_X functions
         result = await self.db.execute(
             select(
-                geo_func.ST_Y(geo_func.ST_GeomFromWKB(event.location.data)).label("lat"),
-                geo_func.ST_X(geo_func.ST_GeomFromWKB(event.location.data)).label("lng"),
+                geo_func.ST_Y(cast(event.location, geoalchemy2.Geometry)).label("lat"),
+                geo_func.ST_X(cast(event.location, geoalchemy2.Geometry)).label("lng"),
             )
         )
         coords = result.first()
@@ -135,6 +139,65 @@ class EventService:
         if coords:
             return (float(coords.lat), float(coords.lng))
         return (0.0, 0.0)
+
+    async def update_event(self, event_id: UUID, event_data: EventUpdate) -> Optional[EventResponse]:
+        """
+        Update an event.
+
+        Args:
+            event_id: Event UUID
+            event_data: Event update data
+
+        Returns:
+            Updated event response or None if not found
+        """
+        # Get the event first
+        event = await self.repository.get_by_id(event_id)
+        if not event:
+            return None
+
+        # Prepare update data
+        update_dict = event_data.model_dump(exclude_unset=True)
+
+        # Handle venue updates
+        if 'venue' in update_dict and update_dict['venue']:
+            venue_data = update_dict.pop('venue')
+            if 'latitude' in venue_data and 'longitude' in venue_data:
+                from geoalchemy2.elements import WKTElement
+                update_dict['location'] = WKTElement(
+                    f"POINT({venue_data['longitude']} {venue_data['latitude']})",
+                    srid=4326
+                )
+            # Add other venue fields
+            for key in ['venue_name', 'address_line1', 'address_line2', 'city', 'state', 'country', 'postal_code']:
+                if key in venue_data:
+                    update_dict[key] = venue_data[key]
+
+        # Update event
+        updated_event = await self.repository.update(event_id, **update_dict)
+        if not updated_event:
+            return None
+
+        await self.db.commit()
+
+        # Extract coordinates and return response
+        lat, lng = await self._extract_coordinates(updated_event)
+        return await self._event_to_response(updated_event, lat, lng)
+
+    async def delete_event(self, event_id: UUID) -> bool:
+        """
+        Delete an event.
+
+        Args:
+            event_id: Event UUID
+
+        Returns:
+            True if deleted, False if not found
+        """
+        result = await self.repository.delete(event_id)
+        if result:
+            await self.db.commit()
+        return result
 
     async def _event_to_response(
         self, event: Event, latitude: float, longitude: float
@@ -152,6 +215,7 @@ class EventService:
         """
         return EventResponse(
             id=event.id,
+            creator_id=event.creator_id,
             title=event.title,
             description=event.description,
             start_time=event.start_time,

@@ -4,8 +4,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2.elements import WKTElement
+from geoalchemy2 import functions as geo_func
 
 from app.models.user import User
+from app.schemas.user import UserResponse
 
 
 class UserRepository:
@@ -19,6 +21,7 @@ class UserRepository:
         self,
         name: str,
         email: str,
+        hashed_password: str,
         latitude: Optional[float] = None,
         longitude: Optional[float] = None,
     ) -> User:
@@ -28,6 +31,7 @@ class UserRepository:
         Args:
             name: User name
             email: User email
+            hashed_password: Hashed password
             latitude: User latitude (optional)
             longitude: User longitude (optional)
 
@@ -42,6 +46,7 @@ class UserRepository:
         user = User(
             name=name,
             email=email,
+            hashed_password=hashed_password,
             location=location,
         )
 
@@ -148,3 +153,39 @@ class UserRepository:
         await self.db.delete(user)
         await self.db.flush()
         return True
+
+    async def to_response(self, user: User) -> UserResponse:
+        """
+        Convert User model to UserResponse schema.
+
+        Args:
+            user: User model
+
+        Returns:
+            UserResponse schema
+        """
+        latitude = None
+        longitude = None
+
+        if user.location:
+            # Extract coordinates from Geography Point
+            coords_result = await self.db.execute(
+                select(
+                    geo_func.ST_Y(geo_func.ST_GeomFromWKB(user.location.data)).label("lat"),
+                    geo_func.ST_X(geo_func.ST_GeomFromWKB(user.location.data)).label("lng"),
+                )
+            )
+            coords = coords_result.first()
+            if coords:
+                latitude = float(coords.lat)
+                longitude = float(coords.lng)
+
+        return UserResponse(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            latitude=latitude,
+            longitude=longitude,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+        )

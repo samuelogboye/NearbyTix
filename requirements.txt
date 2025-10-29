@@ -8,6 +8,7 @@ sqlalchemy[asyncio]==2.0.25
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
 geoalchemy2==0.14.3
+geoalchemy2[shapely]==0.14.3
 alembic==1.13.1
 
 # Pydantic for validation
@@ -29,3 +30,4 @@ bcrypt==4.0.1
 # Utilities
 python-dateutil==2.8.2
 pydantic[email]
+

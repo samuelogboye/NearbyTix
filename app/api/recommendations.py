@@ -3,6 +3,7 @@ from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, cast
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
@@ -10,8 +11,8 @@ from app.models.user import User
 from app.services.geospatial_service import GeospatialService
 from app.schemas.recommendation import EventRecommendation, RecommendationsResponse
 from app.repositories.user_repository import UserRepository
+import geoalchemy2
 from geoalchemy2 import functions as geo_func
-from sqlalchemy import select
 
 
 router = APIRouter(prefix="/for-you", tags=["recommendations"])
@@ -72,11 +73,12 @@ async def get_recommendations(
                 detail="User has no location set. Please update user location first.",
             )
 
-        # Extract user coordinates
+        # Extract user coordinates from Geography type
+        # Cast Geography to Geometry to use ST_Y and ST_X functions
         coords_result = await db.execute(
             select(
-                geo_func.ST_Y(geo_func.ST_GeomFromWKB(user.location.data)).label("lat"),
-                geo_func.ST_X(geo_func.ST_GeomFromWKB(user.location.data)).label("lng"),
+                geo_func.ST_Y(cast(user.location, geoalchemy2.Geometry)).label("lat"),
+                geo_func.ST_X(cast(user.location, geoalchemy2.Geometry)).label("lng"),
             )
         )
         coords = coords_result.first()

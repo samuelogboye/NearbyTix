@@ -4,84 +4,47 @@ from fastapi import APIRouter, Depends, HTTPException, status, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.schemas.user import UserCreate, UserResponse, LocationUpdate
+from app.dependencies.auth import get_current_user
+from app.models.user import User
+from app.schemas.user import UserResponse, LocationUpdate
 from app.services.user_service import UserService
 
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.post(
-    "/",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new user",
-)
-async def create_user(
-    user_data: UserCreate,
-    db: AsyncSession = Depends(get_db),
-) -> UserResponse:
-    """
-    Create a new user.
-
-    Args:
-        user_data: User creation data
-        db: Database session
-
-    Returns:
-        Created user
-
-    Raises:
-        HTTPException: If validation fails or user already exists
-    """
-    try:
-        service = UserService(db)
-        user = await service.create_user(user_data)
-        return user
-    except Exception as e:
-        # Check if it's a unique constraint violation (email already exists)
-        if "unique constraint" in str(e).lower() or "duplicate" in str(e).lower():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"User with email {user_data.email} already exists",
-            )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create user: {str(e)}",
-        )
-
-
 @router.get(
-    "/{user_id}",
+    "/me",
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
-    summary="Get user by ID",
+    summary="Get current user profile",
+    description="Get the profile of the authenticated user.",
 )
-async def get_user(
-    user_id: UUID = Path(..., description="User ID"),
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     """
-    Get user details by ID.
+    Get current user profile.
 
     Args:
-        user_id: User UUID
+        current_user: Authenticated user (from JWT)
         db: Database session
 
     Returns:
-        User details
+        User profile
 
     Raises:
-        HTTPException 404: If user not found
+        HTTPException 401: If not authenticated
     """
     try:
         service = UserService(db)
-        user = await service.get_user_by_id(user_id)
+        user = await service.get_user_by_id(current_user.id)
 
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with ID {user_id} not found",
+                detail="User not found",
             )
 
         return user
@@ -95,38 +58,40 @@ async def get_user(
 
 
 @router.put(
-    "/{user_id}/location",
+    "/me/location",
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
-    summary="Update user location",
+    summary="Update my location",
+    description="Update the location of the authenticated user.",
 )
-async def update_user_location(
+async def update_my_location(
     location_data: LocationUpdate,
-    user_id: UUID = Path(..., description="User ID"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     """
-    Update user location.
+    Update current user's location.
 
     Args:
-        user_id: User UUID
         location_data: New location data
+        current_user: Authenticated user (from JWT)
         db: Database session
 
     Returns:
-        Updated user
+        Updated user profile
 
     Raises:
+        HTTPException 401: If not authenticated
         HTTPException 404: If user not found
     """
     try:
         service = UserService(db)
-        user = await service.update_user_location(user_id, location_data)
+        user = await service.update_user_location(current_user.id, location_data)
 
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with ID {user_id} not found",
+                detail="User not found",
             )
 
         return user

@@ -32,6 +32,7 @@ class User(Base):
         nullable=False,
         index=True,
     )
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Geospatial field for user location
     # Stored as Geography(POINT) with SRID 4326 (WGS84 - standard GPS coordinates)

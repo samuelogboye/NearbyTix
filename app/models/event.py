@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, Integer, Text, DateTime, Index, CheckConstraint
+from sqlalchemy import String, Integer, Text, DateTime, Index, CheckConstraint, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geography
@@ -12,6 +12,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.ticket import Ticket
+    from app.models.user import User
 
 
 class Event(Base):
@@ -23,6 +24,14 @@ class Event(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+        index=True,
+    )
+
+    # Event creator
+    creator_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
         index=True,
     )
 
@@ -76,6 +85,11 @@ class Event(Base):
     )
 
     # Relationships
+    creator: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[creator_id],
+    )
+
     tickets: Mapped[list["Ticket"]] = relationship(
         "Ticket",
         back_populates="event",

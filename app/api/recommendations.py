@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies.auth import get_current_user
+from app.models.user import User
 from app.services.geospatial_service import GeospatialService
 from app.schemas.recommendation import EventRecommendation, RecommendationsResponse
 from app.repositories.user_repository import UserRepository
@@ -20,10 +22,9 @@ router = APIRouter(prefix="/for-you", tags=["recommendations"])
     response_model=RecommendationsResponse,
     status_code=status.HTTP_200_OK,
     summary="Get personalized event recommendations",
-    description="Get event recommendations based on user location using geospatial queries.",
+    description="Get event recommendations based on authenticated user's location using geospatial queries.",
 )
 async def get_recommendations(
-    user_id: UUID = Query(..., description="User ID for personalized recommendations"),
     radius: Optional[float] = Query(
         None,
         ge=1,
@@ -32,35 +33,37 @@ async def get_recommendations(
     ),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Maximum number of records to return"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RecommendationsResponse:
     """
-    Get personalized event recommendations for a user.
+    Get personalized event recommendations for the authenticated user.
 
     This endpoint uses PostGIS geospatial queries to find events near the user's location.
 
     Args:
-        user_id: User UUID
         radius: Search radius in kilometers (optional, default from settings)
         skip: Number of records to skip (for pagination)
         limit: Maximum number of records to return
+        current_user: Authenticated user (from JWT)
         db: Database session
 
     Returns:
         List of recommended events with distances
 
     Raises:
-        HTTPException 404: If user not found or user has no location set
+        HTTPException 401: If not authenticated
+        HTTPException 400: If user has no location set
     """
     try:
-        # Get user
+        # Get user with fresh data from DB
         user_repo = UserRepository(db)
-        user = await user_repo.get_by_id(user_id)
+        user = await user_repo.get_by_id(current_user.id)
 
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with ID {user_id} not found",
+                detail="User not found",
             )
 
         if not user.location:
@@ -87,7 +90,7 @@ async def get_recommendations(
         # Get recommendations
         service = GeospatialService(db)
         recommendations = await service.get_recommendations_for_user(
-            user_id=user_id,
+            user_id=current_user.id,
             radius_km=radius,
             skip=skip,
             limit=limit,

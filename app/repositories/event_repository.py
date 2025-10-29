@@ -17,6 +17,7 @@ class EventRepository:
 
     async def create(
         self,
+        creator_id: UUID,
         title: str,
         start_time,
         end_time,
@@ -36,6 +37,7 @@ class EventRepository:
         Create a new event.
 
         Args:
+            creator_id: User ID of the event creator
             title: Event title
             start_time: Event start time
             end_time: Event end time
@@ -58,6 +60,7 @@ class EventRepository:
         location = WKTElement(f"POINT({longitude} {latitude})", srid=4326)
 
         event = Event(
+            creator_id=creator_id,
             title=title,
             description=description,
             start_time=start_time,

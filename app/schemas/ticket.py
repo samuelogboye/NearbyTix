@@ -10,7 +10,6 @@ from app.models.ticket import TicketStatus
 class TicketReserve(BaseModel):
     """Schema for reserving a ticket."""
 
-    user_id: UUID = Field(..., description="User ID reserving the ticket")
     event_id: UUID = Field(..., description="Event ID to reserve ticket for")
 
     model_config = {"from_attributes": True}

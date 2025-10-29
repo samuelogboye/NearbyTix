@@ -67,7 +67,7 @@ class TicketService:
         self.event_repo = EventRepository(db)
         self.user_repo = UserRepository(db)
 
-    async def reserve_ticket(self, reservation_data: TicketReserve) -> TicketResponse:
+    async def reserve_ticket(self, user_id: UUID, reservation_data: TicketReserve) -> TicketResponse:
         """
         Reserve a ticket for a user.
 
@@ -85,6 +85,7 @@ class TicketService:
         8. Schedule Celery expiration task (future implementation)
 
         Args:
+            user_id: User UUID (from authenticated user)
             reservation_data: Ticket reservation data
 
         Returns:
@@ -111,10 +112,10 @@ class TicketService:
             )
 
         # Step 3: Check user exists
-        user = await self.user_repo.get_by_id(reservation_data.user_id)
+        user = await self.user_repo.get_by_id(user_id)
         if not user:
             raise UserNotFoundException(
-                f"User with ID {reservation_data.user_id} not found"
+                f"User with ID {user_id} not found"
             )
 
         # Step 4: Check tickets available
@@ -128,7 +129,7 @@ class TicketService:
 
         # Step 6: Create ticket with reserved status
         ticket = await self.ticket_repo.create(
-            user_id=reservation_data.user_id,
+            user_id=user_id,
             event_id=reservation_data.event_id,
             status=TicketStatus.RESERVED,
             expires_at=expires_at,

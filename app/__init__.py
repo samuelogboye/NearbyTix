@@ -1,0 +1,1 @@
+"""NearbyTix FastAPI Application."""

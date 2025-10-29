@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # Geospatial settings
     DEFAULT_SEARCH_RADIUS_KM: float = 50.0
 
+    # JWT Authentication settings
+    JWT_SECRET_KEY: str = "your-secret-key-change-this-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
 
 # Global settings instance
 settings = Settings()

@@ -70,6 +70,7 @@ class EventResponse(BaseModel):
     """Schema for event response."""
 
     id: UUID
+    creator_id: UUID
     title: str
     description: Optional[str]
     start_time: datetime
@@ -160,6 +161,7 @@ class EventUpdate(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     total_tickets: Optional[int] = Field(None, gt=0)
+    venue: Optional[VenueSchema] = None
 
     @field_validator("start_time", "end_time")
     @classmethod

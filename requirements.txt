@@ -24,6 +24,7 @@ redis==5.0.1
 # Authentication
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 
 # Utilities
 python-dateutil==2.8.2

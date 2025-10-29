@@ -1,9 +1,10 @@
 """User repository for database operations."""
 from typing import Optional, List
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import select, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2.elements import WKTElement
+import geoalchemy2
 from geoalchemy2 import functions as geo_func
 
 from app.models.user import User
@@ -169,10 +170,11 @@ class UserRepository:
 
         if user.location:
             # Extract coordinates from Geography Point
+            # Cast Geography to Geometry to use ST_Y and ST_X functions
             coords_result = await self.db.execute(
                 select(
-                    geo_func.ST_Y(geo_func.ST_GeomFromWKB(user.location.data)).label("lat"),
-                    geo_func.ST_X(geo_func.ST_GeomFromWKB(user.location.data)).label("lng"),
+                    geo_func.ST_Y(cast(user.location, geoalchemy2.Geometry)).label("lat"),
+                    geo_func.ST_X(cast(user.location, geoalchemy2.Geometry)).label("lng"),
                 )
             )
             coords = coords_result.first()

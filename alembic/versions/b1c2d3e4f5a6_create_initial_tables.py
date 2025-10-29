@@ -61,13 +61,17 @@ def upgrade() -> None:
     op.create_index(op.f('ix_events_id'), 'events', ['id'], unique=False)
     op.create_index('idx_event_location', 'events', ['location'], unique=False, postgresql_using='gist')
 
+    # Create ticket_status enum type
+    ticket_status_enum = postgresql.ENUM('reserved', 'paid', 'expired', name='ticket_status', create_type=True)
+    ticket_status_enum.create(op.get_bind(), checkfirst=True)
+
     # Create tickets table
     op.create_table(
         'tickets',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('event_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('status', sa.Enum('RESERVED', 'PAID', 'EXPIRED', name='ticketstatus'), nullable=False),
+        sa.Column('status', ticket_status_enum, nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
@@ -89,6 +93,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_tickets_id'), table_name='tickets')
     op.drop_table('tickets')
 
+    # Drop the enum type
+    postgresql.ENUM(name='ticket_status').drop(op.get_bind(), checkfirst=True)
+
     op.drop_index('idx_event_location', table_name='events', postgresql_using='gist')
     op.drop_index(op.f('ix_events_id'), table_name='events')
     op.drop_table('events')
@@ -96,6 +103,3 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_users_id'), table_name='users')
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_table('users')
-
-    # Drop the enum type
-    sa.Enum(name='ticketstatus').drop(op.get_bind(), checkfirst=True)

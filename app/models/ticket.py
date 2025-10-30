@@ -1,7 +1,7 @@
 """Ticket model."""
 import uuid
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import String, DateTime, ForeignKey, Enum as SQLEnum, Index
@@ -51,7 +51,7 @@ class Ticket(Base):
 
     # Ticket status
     status: Mapped[TicketStatus] = mapped_column(
-        SQLEnum(TicketStatus, name="ticket_status", create_constraint=True),
+        SQLEnum(TicketStatus, name="ticket_status", create_constraint=True, values_callable=lambda x: [e.value for e in x]),
         default=TicketStatus.RESERVED,
         nullable=False,
         index=True,
@@ -66,7 +66,7 @@ class Ticket(Base):
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
         index=True,
     )
@@ -81,8 +81,8 @@ class Ticket(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -108,7 +108,7 @@ class Ticket(Base):
         """Check if ticket has expired."""
         if self.status != TicketStatus.RESERVED or not self.expires_at:
             return False
-        return datetime.utcnow() > self.expires_at
+        return datetime.now(timezone.utc) > self.expires_at
 
     @property
     def is_paid(self) -> bool:

@@ -1,7 +1,7 @@
 """Ticket repository for database operations."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -193,7 +193,7 @@ class TicketRepository:
         Returns:
             List of expired Ticket objects
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         result = await self.db.execute(
             select(Ticket)
             .where(Ticket.status == TicketStatus.RESERVED)

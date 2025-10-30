@@ -1,6 +1,6 @@
 """Celery tasks for ticket management."""
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 from typing import List
 
@@ -66,7 +66,7 @@ async def _expire_ticket_async(ticket_id: str):
                 }
 
             # Check if actually expired
-            if ticket.expires_at and datetime.utcnow() < ticket.expires_at:
+            if ticket.expires_at and datetime.now(timezone.utc) < ticket.expires_at:
                 return {
                     "status": "not_yet_expired",
                     "message": f"Ticket {ticket_id} not yet expired",
@@ -121,7 +121,7 @@ async def _cleanup_expired_tickets_async():
     """
     async with get_async_session() as db:
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Find all reserved tickets that should be expired
             result = await db.execute(

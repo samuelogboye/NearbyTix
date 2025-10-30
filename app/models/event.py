@@ -1,6 +1,6 @@
 """Event model."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import String, Integer, Text, DateTime, Index, CheckConstraint, ForeignKey
@@ -74,13 +74,13 @@ class Event(Base):
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -121,18 +121,18 @@ class Event(Base):
     @property
     def is_upcoming(self) -> bool:
         """Check if event is in the future."""
-        return self.start_time > datetime.utcnow()
+        return self.start_time > datetime.now(timezone.utc)
 
     @property
     def is_ongoing(self) -> bool:
         """Check if event is currently happening."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return self.start_time <= now <= self.end_time
 
     @property
     def has_ended(self) -> bool:
         """Check if event has ended."""
-        return self.end_time < datetime.utcnow()
+        return self.end_time < datetime.now(timezone.utc)
 
     def __repr__(self) -> str:
         return (

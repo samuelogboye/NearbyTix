@@ -1,7 +1,7 @@
 """Ticket service layer for business logic."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,7 +125,7 @@ class TicketService:
             )
 
         # Step 5: Calculate expiration time
-        expires_at = datetime.utcnow() + timedelta(seconds=settings.TICKET_EXPIRATION_TIME)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.TICKET_EXPIRATION_TIME)
 
         # Step 6: Create ticket with reserved status
         ticket = await self.ticket_repo.create(
@@ -200,7 +200,7 @@ class TicketService:
             )
 
         # Update status to paid
-        paid_at = datetime.utcnow()
+        paid_at = datetime.now(timezone.utc)
         ticket = await self.ticket_repo.update_status(
             ticket_id=ticket_id,
             new_status=TicketStatus.PAID,

@@ -1,7 +1,7 @@
 """Geospatial service for location-based queries."""
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import functions as geo_func
@@ -68,7 +68,7 @@ class GeospatialService:
 
         # Filter upcoming events only
         if upcoming_only:
-            query = query.where(Event.start_time > datetime.utcnow())
+            query = query.where(Event.start_time > datetime.now(timezone.utc))
 
         # Filter out sold out events
         query = query.where(Event.tickets_sold < Event.total_tickets)

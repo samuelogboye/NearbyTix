@@ -1,6 +1,7 @@
 """Event repository for database operations."""
 from typing import Optional, List
 from uuid import UUID
+from datetime import datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2.elements import WKTElement
@@ -114,7 +115,7 @@ class EventRepository:
         if upcoming_only:
             from datetime import datetime
 
-            query = query.where(Event.start_time > datetime.utcnow())
+            query = query.where(Event.start_time > datetime.now(timezone.utc))
 
         result = await self.db.execute(query)
         return list(result.scalars().all())
@@ -134,7 +135,7 @@ class EventRepository:
         if upcoming_only:
             from datetime import datetime
 
-            query = query.where(Event.start_time > datetime.utcnow())
+            query = query.where(Event.start_time > datetime.now(timezone.utc))
 
         result = await self.db.execute(query)
         return result.scalar() or 0

@@ -61,9 +61,14 @@ def upgrade() -> None:
     op.create_index(op.f('ix_events_id'), 'events', ['id'], unique=False)
     op.create_index('idx_event_location', 'events', ['location'], unique=False, postgresql_using='gist')
 
-    # Create ticket_status enum type
-    ticket_status_enum = postgresql.ENUM('reserved', 'paid', 'expired', name='ticket_status', create_type=True)
-    ticket_status_enum.create(op.get_bind(), checkfirst=True)
+    # Create ticket_status enum type using raw SQL with proper existence check
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE ticket_status AS ENUM ('reserved', 'paid', 'expired');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
     # Create tickets table
     op.create_table(
@@ -71,7 +76,7 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('event_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('status', ticket_status_enum, nullable=False),
+        sa.Column('status', postgresql.ENUM('reserved', 'paid', 'expired', name='ticket_status', create_type=False), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),

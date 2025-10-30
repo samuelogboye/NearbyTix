@@ -160,6 +160,52 @@ async def pay_for_ticket(
 
 
 @router.get(
+    "/my-tickets",
+    response_model=TicketListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get my ticket history",
+    description="Get all tickets for the authenticated user with optional status filter.",
+)
+async def get_my_tickets(
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
+    status_filter: Optional[TicketStatus] = Query(None, alias="status", description="Filter by ticket status"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TicketListResponse:
+    """
+    Get all tickets for the authenticated user.
+
+    Args:
+        skip: Number of records to skip (for pagination)
+        limit: Maximum number of records to return
+        status_filter: Filter by ticket status (optional)
+        current_user: Authenticated user (from JWT)
+        db: Database session
+
+    Returns:
+        Paginated list of tickets
+
+    Raises:
+        HTTPException 401: If not authenticated
+    """
+    try:
+        service = TicketService(db)
+        tickets = await service.get_user_tickets(
+            user_id=current_user.id,
+            skip=skip,
+            limit=limit,
+            status=status_filter,
+        )
+        return tickets
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve tickets: {str(e)}",
+        )
+
+
+@router.get(
     "/{ticket_id}",
     response_model=TicketResponse,
     status_code=status.HTTP_200_OK,
@@ -215,50 +261,4 @@ async def get_ticket(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve ticket: {str(e)}",
-        )
-
-
-@router.get(
-    "/my-tickets",
-    response_model=TicketListResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Get my ticket history",
-    description="Get all tickets for the authenticated user with optional status filter.",
-)
-async def get_my_tickets(
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
-    status_filter: Optional[TicketStatus] = Query(None, alias="status", description="Filter by ticket status"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> TicketListResponse:
-    """
-    Get all tickets for the authenticated user.
-
-    Args:
-        skip: Number of records to skip (for pagination)
-        limit: Maximum number of records to return
-        status_filter: Filter by ticket status (optional)
-        current_user: Authenticated user (from JWT)
-        db: Database session
-
-    Returns:
-        Paginated list of tickets
-
-    Raises:
-        HTTPException 401: If not authenticated
-    """
-    try:
-        service = TicketService(db)
-        tickets = await service.get_user_tickets(
-            user_id=current_user.id,
-            skip=skip,
-            limit=limit,
-            status=status_filter,
-        )
-        return tickets
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve tickets: {str(e)}",
         )

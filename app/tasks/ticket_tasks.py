@@ -4,16 +4,40 @@ from datetime import datetime, timezone
 from uuid import UUID
 from typing import List
 
-from app.celery_app import celery_app
-from app.database import AsyncSessionLocal
-from app.models.ticket import Ticket, TicketStatus
-from app.models.event import Event
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import select
 
+from app.celery_app import celery_app
+from app.config import settings
+from app.models.ticket import Ticket, TicketStatus
+from app.models.event import Event
 
-def get_async_session():
-    """Get async database session for Celery tasks."""
-    return AsyncSessionLocal()
+
+def create_async_db_session():
+    """
+    Create a fresh async engine and session for Celery tasks.
+
+    This is necessary because Celery tasks run in forked worker processes
+    and use asyncio.run() which creates new event loops. We need to create
+    the engine within the event loop to avoid connection pool issues.
+    """
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        future=True,
+        pool_pre_ping=True,
+        poolclass=None,  # Disable pooling for Celery tasks to avoid event loop conflicts
+    )
+
+    session_maker = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    return engine, session_maker
 
 
 @celery_app.task(name="app.tasks.ticket_tasks.expire_ticket_task", bind=True, max_retries=3)
@@ -45,56 +69,63 @@ async def _expire_ticket_async(ticket_id: str):
     Returns:
         dict with status and message
     """
-    async with get_async_session() as db:
-        try:
-            ticket_uuid = UUID(ticket_id)
+    # Create fresh engine and session within this event loop
+    engine, session_maker = create_async_db_session()
 
-            # Get ticket with lock
-            result = await db.execute(
-                select(Ticket).where(Ticket.id == ticket_uuid).with_for_update()
-            )
-            ticket = result.scalar_one_or_none()
+    try:
+        async with session_maker() as db:
+            try:
+                ticket_uuid = UUID(ticket_id)
 
-            if not ticket:
-                return {"status": "not_found", "message": f"Ticket {ticket_id} not found"}
+                # Get ticket with lock
+                result = await db.execute(
+                    select(Ticket).where(Ticket.id == ticket_uuid).with_for_update()
+                )
+                ticket = result.scalar_one_or_none()
 
-            # Only expire if still reserved
-            if ticket.status != TicketStatus.RESERVED:
+                if not ticket:
+                    return {"status": "not_found", "message": f"Ticket {ticket_id} not found"}
+
+                # Only expire if still reserved
+                if ticket.status != TicketStatus.RESERVED:
+                    return {
+                        "status": "skipped",
+                        "message": f"Ticket {ticket_id} is {ticket.status}, not reserved",
+                    }
+
+                # Check if actually expired
+                if ticket.expires_at and datetime.now(timezone.utc) < ticket.expires_at:
+                    return {
+                        "status": "not_yet_expired",
+                        "message": f"Ticket {ticket_id} not yet expired",
+                    }
+
+                # Get event and decrement tickets_sold
+                result = await db.execute(
+                    select(Event).where(Event.id == ticket.event_id).with_for_update()
+                )
+                event = result.scalar_one_or_none()
+
+                if event:
+                    event.tickets_sold = max(0, event.tickets_sold - 1)
+
+                # Update ticket status
+                ticket.status = TicketStatus.EXPIRED
+
+                await db.commit()
+
                 return {
-                    "status": "skipped",
-                    "message": f"Ticket {ticket_id} is {ticket.status}, not reserved",
+                    "status": "expired",
+                    "message": f"Ticket {ticket_id} expired successfully",
+                    "event_id": str(ticket.event_id),
                 }
 
-            # Check if actually expired
-            if ticket.expires_at and datetime.now(timezone.utc) < ticket.expires_at:
-                return {
-                    "status": "not_yet_expired",
-                    "message": f"Ticket {ticket_id} not yet expired",
-                }
-
-            # Get event and decrement tickets_sold
-            result = await db.execute(
-                select(Event).where(Event.id == ticket.event_id).with_for_update()
-            )
-            event = result.scalar_one_or_none()
-
-            if event:
-                event.tickets_sold = max(0, event.tickets_sold - 1)
-
-            # Update ticket status
-            ticket.status = TicketStatus.EXPIRED
-
-            await db.commit()
-
-            return {
-                "status": "expired",
-                "message": f"Ticket {ticket_id} expired successfully",
-                "event_id": str(ticket.event_id),
-            }
-
-        except Exception as e:
-            await db.rollback()
-            raise e
+            except Exception as e:
+                await db.rollback()
+                raise e
+    finally:
+        # Always dispose of the engine to clean up connections
+        await engine.dispose()
 
 
 @celery_app.task(name="app.tasks.ticket_tasks.cleanup_expired_tickets")
@@ -119,55 +150,62 @@ async def _cleanup_expired_tickets_async():
     Returns:
         dict with status and count
     """
-    async with get_async_session() as db:
-        try:
-            now = datetime.now(timezone.utc)
+    # Create fresh engine and session within this event loop
+    engine, session_maker = create_async_db_session()
 
-            # Find all reserved tickets that should be expired
-            result = await db.execute(
-                select(Ticket)
-                .where(Ticket.status == TicketStatus.RESERVED)
-                .where(Ticket.expires_at != None)
-                .where(Ticket.expires_at < now)
-                .limit(100)  # Process in batches
-            )
-            expired_tickets: List[Ticket] = list(result.scalars().all())
+    try:
+        async with session_maker() as db:
+            try:
+                now = datetime.now(timezone.utc)
 
-            if not expired_tickets:
-                return {"status": "success", "expired_count": 0}
-
-            # Group tickets by event for efficient updates
-            event_ids = set(ticket.event_id for ticket in expired_tickets)
-
-            # Lock and update each event's ticket count
-            for event_id in event_ids:
+                # Find all reserved tickets that should be expired
                 result = await db.execute(
-                    select(Event).where(Event.id == event_id).with_for_update()
+                    select(Ticket)
+                    .where(Ticket.status == TicketStatus.RESERVED)
+                    .where(Ticket.expires_at != None)
+                    .where(Ticket.expires_at < now)
+                    .limit(100)  # Process in batches
                 )
-                event = result.scalar_one_or_none()
+                expired_tickets: List[Ticket] = list(result.scalars().all())
 
-                if event:
-                    # Count how many tickets for this event are being expired
-                    tickets_to_expire = len(
-                        [t for t in expired_tickets if t.event_id == event_id]
+                if not expired_tickets:
+                    return {"status": "success", "expired_count": 0}
+
+                # Group tickets by event for efficient updates
+                event_ids = set(ticket.event_id for ticket in expired_tickets)
+
+                # Lock and update each event's ticket count
+                for event_id in event_ids:
+                    result = await db.execute(
+                        select(Event).where(Event.id == event_id).with_for_update()
                     )
-                    event.tickets_sold = max(0, event.tickets_sold - tickets_to_expire)
+                    event = result.scalar_one_or_none()
 
-            # Update all ticket statuses
-            for ticket in expired_tickets:
-                ticket.status = TicketStatus.EXPIRED
+                    if event:
+                        # Count how many tickets for this event are being expired
+                        tickets_to_expire = len(
+                            [t for t in expired_tickets if t.event_id == event_id]
+                        )
+                        event.tickets_sold = max(0, event.tickets_sold - tickets_to_expire)
 
-            await db.commit()
+                # Update all ticket statuses
+                for ticket in expired_tickets:
+                    ticket.status = TicketStatus.EXPIRED
 
-            return {
-                "status": "success",
-                "expired_count": len(expired_tickets),
-                "event_count": len(event_ids),
-            }
+                await db.commit()
 
-        except Exception as e:
-            await db.rollback()
-            raise e
+                return {
+                    "status": "success",
+                    "expired_count": len(expired_tickets),
+                    "event_count": len(event_ids),
+                }
+
+            except Exception as e:
+                await db.rollback()
+                raise e
+    finally:
+        # Always dispose of the engine to clean up connections
+        await engine.dispose()
 
 
 @celery_app.task(name="app.tasks.ticket_tasks.cancel_expiration_task")

@@ -2,9 +2,11 @@
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, timezone
-from sqlalchemy import select, func
+from sqlalchemy import select, func, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import functions as geo_func
+from geoalchemy2.types import Geography
+import geoalchemy2
 
 from app.models.event import Event
 from app.models.user import User
@@ -52,9 +54,10 @@ class GeospatialService:
         )
 
         # Calculate distance in meters, convert to km
+        # Cast Event.location (Geography) to use in distance calculation
         distance_expr = geo_func.ST_Distance(
-            geo_func.ST_GeogFromWKB(Event.location.data),
-            func.cast(user_location, geo_func.Geography)
+            Event.location,
+            func.cast(user_location, Geography)
         )
 
         # Build query
@@ -114,10 +117,11 @@ class GeospatialService:
             return []
 
         # Extract user coordinates
+        # Cast Geography to Geometry to use ST_Y and ST_X functions
         coords_result = await self.db.execute(
             select(
-                geo_func.ST_Y(geo_func.ST_GeomFromWKB(user.location.data)).label("lat"),
-                geo_func.ST_X(geo_func.ST_GeomFromWKB(user.location.data)).label("lng"),
+                geo_func.ST_Y(cast(user.location, geoalchemy2.Geometry)).label("lat"),
+                geo_func.ST_X(cast(user.location, geoalchemy2.Geometry)).label("lng"),
             )
         )
         coords = coords_result.first()
@@ -180,8 +184,8 @@ class GeospatialService:
 
         distance_query = select(
             geo_func.ST_Distance(
-                func.cast(point1, geo_func.Geography),
-                func.cast(point2, geo_func.Geography)
+                func.cast(point1, Geography),
+                func.cast(point2, Geography)
             ).label("distance_meters")
         )
 

@@ -18,8 +18,9 @@ from app.models.ticket import Ticket, TicketStatus
 from app.utils.auth import hash_password, create_access_token
 
 
-# Test database URL (use a separate test database)
-TEST_DATABASE_URL = settings.DATABASE_URL.replace("/nearbytix", "/nearbytix_test")
+# Test database URL (use same credentials, different database)
+# Format: postgresql+asyncpg://user:password@host:port/database
+TEST_DATABASE_URL = settings.DATABASE_URL.rsplit("/", 1)[0] + "/nearbytix_test"
 
 
 @pytest.fixture(scope="session")

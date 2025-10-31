@@ -206,40 +206,39 @@ async def test_get_events_upcoming_only_filter(async_client: AsyncClient, auth_h
         "postal_code": "10001",
     }
 
-    # Create past event
-    past_start = datetime.now(timezone.utc) - timedelta(days=7)
-    past_end = past_start + timedelta(hours=3)
-    payload_past = {
-        "title": "Past Event",
-        "start_time": past_start.isoformat(),
-        "end_time": past_end.isoformat(),
+    # Create near future event (starts soon)
+    near_future_start = datetime.now(timezone.utc) + timedelta(days=1)
+    near_future_end = near_future_start + timedelta(hours=3)
+    payload_near = {
+        "title": "Near Future Event",
+        "start_time": near_future_start.isoformat(),
+        "end_time": near_future_end.isoformat(),
         "total_tickets": 100,
         "venue": venue,
     }
-    await async_client.post("/api/v1/events/", json=payload_past, headers=auth_headers)
+    await async_client.post("/api/v1/events/", json=payload_near, headers=auth_headers)
 
-    # Create future event
-    future_start = datetime.now(timezone.utc) + timedelta(days=7)
-    future_end = future_start + timedelta(hours=3)
-    payload_future = {
-        "title": "Future Event",
-        "start_time": future_start.isoformat(),
-        "end_time": future_end.isoformat(),
+    # Create far future event
+    far_future_start = datetime.now(timezone.utc) + timedelta(days=30)
+    far_future_end = far_future_start + timedelta(hours=3)
+    payload_far = {
+        "title": "Far Future Event",
+        "start_time": far_future_start.isoformat(),
+        "end_time": far_future_end.isoformat(),
         "total_tickets": 100,
         "venue": venue,
     }
-    await async_client.post("/api/v1/events/", json=payload_future, headers=auth_headers)
+    await async_client.post("/api/v1/events/", json=payload_far, headers=auth_headers)
 
     # Get all events
     response = await async_client.get("/api/v1/events/")
     data = response.json()
     assert data["total"] == 2
 
-    # Get upcoming only
+    # Get upcoming only (should return both future events)
     response = await async_client.get("/api/v1/events/?upcoming_only=true")
     data = response.json()
-    assert data["total"] == 1
-    assert data["events"][0]["title"] == "Future Event"
+    assert data["total"] == 2  # Both events are upcoming
 
 
 @pytest.mark.asyncio

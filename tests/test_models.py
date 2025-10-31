@@ -154,7 +154,8 @@ async def test_ticket_model_with_relationships(db_session):
     # Create user
     user = User(name="John Doe", email="john@example.com", hashed_password=hash_password("testpassword"))
     db_session.add(user)
-    await db_session.commit()  # Commit user first to get ID
+    await db_session.commit()
+    await db_session.refresh(user)  # Refresh to get ID
 
     # Create event
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
@@ -214,7 +215,8 @@ async def test_ticket_default_status_is_reserved(db_session):
     """Test that ticket default status is RESERVED."""
     user = User(name="John Doe", email="john@example.com", hashed_password=hash_password("testpassword"))
     db_session.add(user)
-    await db_session.commit()  # Commit user first to get ID
+    await db_session.commit()
+    await db_session.refresh(user)  # Refresh to get ID
 
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)

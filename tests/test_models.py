@@ -1,10 +1,11 @@
 """Tests for database models."""
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from geoalchemy2.elements import WKTElement
 from sqlalchemy import select
 
 from app.models import User, Event, Ticket, TicketStatus
+from app.utils.auth import hash_password
 
 
 @pytest.mark.unit
@@ -14,6 +15,7 @@ async def test_user_model_creation(db_session):
     user = User(
         name="John Doe",
         email="john@example.com",
+        hashed_password=hash_password("testpassword"),
     )
     db_session.add(user)
     await db_session.commit()
@@ -30,11 +32,11 @@ async def test_user_model_creation(db_session):
 @pytest.mark.asyncio
 async def test_user_email_uniqueness(db_session):
     """Test that user email must be unique."""
-    user1 = User(name="John Doe", email="john@example.com")
+    user1 = User(name="John Doe", email="john@example.com", hashed_password=hash_password("test"))
     db_session.add(user1)
     await db_session.commit()
 
-    user2 = User(name="Jane Doe", email="john@example.com")
+    user2 = User(name="Jane Doe", email="john@example.com", hashed_password=hash_password("test"))
     db_session.add(user2)
 
     with pytest.raises(Exception):  # IntegrityError for duplicate email
@@ -51,6 +53,7 @@ async def test_user_with_location(db_session):
     user = User(
         name="John Doe",
         email="john@example.com",
+        hashed_password=hash_password("testpassword"),
         location=location,
     )
     db_session.add(user)
@@ -64,11 +67,21 @@ async def test_user_with_location(db_session):
 @pytest.mark.asyncio
 async def test_event_model_with_venue(db_session):
     """Test creating an Event model with venue information."""
-    start_time = datetime.utcnow() + timedelta(days=7)
+    # Create user first (required for creator_id)
+    user = User(
+        name="Event Creator",
+        email="creator@example.com",
+        hashed_password=hash_password("testpassword"),
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
     location = WKTElement("POINT(-73.935242 40.730610)", srid=4326)
 
     event = Event(
+        creator_id=user.id,
         title="Tech Conference 2025",
         description="Annual tech conference",
         start_time=start_time,
@@ -99,11 +112,21 @@ async def test_event_model_with_venue(db_session):
 @pytest.mark.asyncio
 async def test_event_location_geospatial_type(db_session):
     """Test that event location is properly stored as geospatial type."""
-    start_time = datetime.utcnow() + timedelta(days=7)
+    # Create user first (required for creator_id)
+    user = User(
+        name="Event Creator",
+        email="creator2@example.com",
+        hashed_password=hash_password("testpassword"),
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
     location = WKTElement("POINT(-118.243683 34.052235)", srid=4326)  # LA coordinates
 
     event = Event(
+        creator_id=user.id,
         title="LA Event",
         start_time=start_time,
         end_time=end_time,
@@ -129,15 +152,17 @@ async def test_event_location_geospatial_type(db_session):
 async def test_ticket_model_with_relationships(db_session):
     """Test Ticket model with relationships to User and Event."""
     # Create user
-    user = User(name="John Doe", email="john@example.com")
+    user = User(name="John Doe", email="john@example.com", hashed_password=hash_password("testpassword"))
     db_session.add(user)
+    await db_session.commit()  # Commit user first to get ID
 
     # Create event
-    start_time = datetime.utcnow() + timedelta(days=7)
+    start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
     location = WKTElement("POINT(-73.935242 40.730610)", srid=4326)
 
     event = Event(
+        creator_id=user.id,
         title="Concert",
         start_time=start_time,
         end_time=end_time,
@@ -154,7 +179,7 @@ async def test_ticket_model_with_relationships(db_session):
     await db_session.commit()
 
     # Create ticket
-    expires_at = datetime.utcnow() + timedelta(minutes=2)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=2)
     ticket = Ticket(
         user_id=user.id,
         event_id=event.id,
@@ -187,14 +212,16 @@ async def test_ticket_status_enum_values(db_session):
 @pytest.mark.asyncio
 async def test_ticket_default_status_is_reserved(db_session):
     """Test that ticket default status is RESERVED."""
-    user = User(name="John Doe", email="john@example.com")
+    user = User(name="John Doe", email="john@example.com", hashed_password=hash_password("testpassword"))
     db_session.add(user)
+    await db_session.commit()  # Commit user first to get ID
 
-    start_time = datetime.utcnow() + timedelta(days=7)
+    start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
     location = WKTElement("POINT(-73.935242 40.730610)", srid=4326)
 
     event = Event(
+        creator_id=user.id,
         title="Concert",
         start_time=start_time,
         end_time=end_time,
@@ -253,8 +280,8 @@ def test_event_is_sold_out_property():
 @pytest.mark.unit
 def test_ticket_is_expired_property():
     """Test ticket is_expired property."""
-    past_time = datetime.utcnow() - timedelta(minutes=5)
-    future_time = datetime.utcnow() + timedelta(minutes=5)
+    past_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    future_time = datetime.now(timezone.utc) + timedelta(minutes=5)
 
     expired_ticket = Ticket(
         status=TicketStatus.RESERVED,

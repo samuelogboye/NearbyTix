@@ -216,7 +216,8 @@ async def test_get_events_upcoming_only_filter(async_client: AsyncClient, auth_h
         "total_tickets": 100,
         "venue": venue,
     }
-    await async_client.post("/api/v1/events/", json=payload_near, headers=auth_headers)
+    response1 = await async_client.post("/api/v1/events/", json=payload_near, headers=auth_headers)
+    assert response1.status_code == 201
 
     # Create far future event
     far_future_start = datetime.now(timezone.utc) + timedelta(days=30)
@@ -228,7 +229,8 @@ async def test_get_events_upcoming_only_filter(async_client: AsyncClient, auth_h
         "total_tickets": 100,
         "venue": venue,
     }
-    await async_client.post("/api/v1/events/", json=payload_far, headers=auth_headers)
+    response2 = await async_client.post("/api/v1/events/", json=payload_far, headers=auth_headers)
+    assert response2.status_code == 201
 
     # Get all events
     response = await async_client.get("/api/v1/events/")

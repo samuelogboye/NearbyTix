@@ -1,10 +1,13 @@
 """Integration tests for event API endpoints."""
 import pytest
 from datetime import datetime, timedelta, timezone
+from httpx import AsyncClient
+
+from app.models.user import User
 
 
-@pytest.mark.integration
-def test_post_events_success_201(client):
+@pytest.mark.asyncio
+async def test_post_events_success_201(async_client: AsyncClient, test_user: User, auth_headers: dict):
     """Test POST /events/ creates an event successfully."""
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
@@ -27,7 +30,7 @@ def test_post_events_success_201(client):
         },
     }
 
-    response = client.post("/api/v1/events/", json=payload)
+    response = await async_client.post("/api/v1/events/", json=payload, headers=auth_headers)
 
     assert response.status_code == 201
     data = response.json()
@@ -40,8 +43,8 @@ def test_post_events_success_201(client):
     assert data["longitude"] == -74.0060
 
 
-@pytest.mark.integration
-def test_post_events_invalid_data_422(client):
+@pytest.mark.asyncio
+async def test_post_events_invalid_data_422(async_client: AsyncClient, auth_headers: dict):
     """Test POST /events/ with invalid data returns 422."""
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time - timedelta(hours=1)  # End before start (invalid)
@@ -63,13 +66,13 @@ def test_post_events_invalid_data_422(client):
         },
     }
 
-    response = client.post("/api/v1/events/", json=payload)
+    response = await async_client.post("/api/v1/events/", json=payload, headers=auth_headers)
 
     assert response.status_code == 422
 
 
-@pytest.mark.integration
-def test_post_events_past_date_rejected(client):
+@pytest.mark.asyncio
+async def test_post_events_past_date_rejected(async_client: AsyncClient, auth_headers: dict):
     """Test that past events are rejected."""
     start_time = datetime.now(timezone.utc) - timedelta(days=1)  # Past
     end_time = start_time + timedelta(hours=3)
@@ -91,13 +94,13 @@ def test_post_events_past_date_rejected(client):
         },
     }
 
-    response = client.post("/api/v1/events/", json=payload)
+    response = await async_client.post("/api/v1/events/", json=payload, headers=auth_headers)
 
     assert response.status_code == 422
 
 
-@pytest.mark.integration
-def test_get_events_returns_list_200(client):
+@pytest.mark.asyncio
+async def test_get_events_returns_list_200(async_client: AsyncClient, auth_headers: dict):
     """Test GET /events/ returns list of events."""
     # Create test events
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
@@ -120,10 +123,10 @@ def test_get_events_returns_list_200(client):
                 "postal_code": "10001",
             },
         }
-        client.post("/api/v1/events/", json=payload)
+        await async_client.post("/api/v1/events/", json=payload, headers=auth_headers)
 
     # Get all events
-    response = client.get("/api/v1/events/")
+    response = await async_client.get("/api/v1/events/")
 
     assert response.status_code == 200
     data = response.json()
@@ -133,8 +136,8 @@ def test_get_events_returns_list_200(client):
     assert len(data["events"]) == 3
 
 
-@pytest.mark.integration
-def test_get_events_pagination_works(client):
+@pytest.mark.asyncio
+async def test_get_events_pagination_works(async_client: AsyncClient, auth_headers: dict):
     """Test that pagination works for GET /events/."""
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
@@ -157,10 +160,10 @@ def test_get_events_pagination_works(client):
                 "postal_code": "10001",
             },
         }
-        client.post("/api/v1/events/", json=payload)
+        await async_client.post("/api/v1/events/", json=payload, headers=auth_headers)
 
     # Get first page (limit 2)
-    response = client.get("/api/v1/events/?skip=0&limit=2")
+    response = await async_client.get("/api/v1/events/?skip=0&limit=2")
     data = response.json()
     assert len(data["events"]) == 2
     assert data["total"] == 5
@@ -168,20 +171,20 @@ def test_get_events_pagination_works(client):
     assert data["limit"] == 2
 
     # Get second page
-    response = client.get("/api/v1/events/?skip=2&limit=2")
+    response = await async_client.get("/api/v1/events/?skip=2&limit=2")
     data = response.json()
     assert len(data["events"]) == 2
 
     # Get third page
-    response = client.get("/api/v1/events/?skip=4&limit=2")
+    response = await async_client.get("/api/v1/events/?skip=4&limit=2")
     data = response.json()
     assert len(data["events"]) == 1
 
 
-@pytest.mark.integration
-def test_get_events_empty_list(client):
+@pytest.mark.asyncio
+async def test_get_events_empty_list(async_client: AsyncClient):
     """Test GET /events/ with no events returns empty list."""
-    response = client.get("/api/v1/events/")
+    response = await async_client.get("/api/v1/events/")
 
     assert response.status_code == 200
     data = response.json()
@@ -189,8 +192,8 @@ def test_get_events_empty_list(client):
     assert data["total"] == 0
 
 
-@pytest.mark.integration
-def test_get_events_upcoming_only_filter(client):
+@pytest.mark.asyncio
+async def test_get_events_upcoming_only_filter(async_client: AsyncClient, auth_headers: dict):
     """Test GET /events/ with upcoming_only filter."""
     venue = {
         "latitude": 40.7128,
@@ -213,7 +216,7 @@ def test_get_events_upcoming_only_filter(client):
         "total_tickets": 100,
         "venue": venue,
     }
-    client.post("/api/v1/events/", json=payload_past)
+    await async_client.post("/api/v1/events/", json=payload_past, headers=auth_headers)
 
     # Create future event
     future_start = datetime.now(timezone.utc) + timedelta(days=7)
@@ -225,22 +228,22 @@ def test_get_events_upcoming_only_filter(client):
         "total_tickets": 100,
         "venue": venue,
     }
-    client.post("/api/v1/events/", json=payload_future)
+    await async_client.post("/api/v1/events/", json=payload_future, headers=auth_headers)
 
     # Get all events
-    response = client.get("/api/v1/events/")
+    response = await async_client.get("/api/v1/events/")
     data = response.json()
     assert data["total"] == 2
 
     # Get upcoming only
-    response = client.get("/api/v1/events/?upcoming_only=true")
+    response = await async_client.get("/api/v1/events/?upcoming_only=true")
     data = response.json()
     assert data["total"] == 1
     assert data["events"][0]["title"] == "Future Event"
 
 
-@pytest.mark.integration
-def test_get_event_by_id_success(client):
+@pytest.mark.asyncio
+async def test_get_event_by_id_success(async_client: AsyncClient, auth_headers: dict):
     """Test GET /events/{event_id} returns event details."""
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
@@ -264,11 +267,11 @@ def test_get_event_by_id_success(client):
     }
 
     # Create event
-    create_response = client.post("/api/v1/events/", json=payload)
+    create_response = await async_client.post("/api/v1/events/", json=payload, headers=auth_headers)
     event_id = create_response.json()["id"]
 
     # Get event by ID
-    response = client.get(f"/api/v1/events/{event_id}")
+    response = await async_client.get(f"/api/v1/events/{event_id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -278,20 +281,20 @@ def test_get_event_by_id_success(client):
     assert data["venue_name"] == "Test Venue"
 
 
-@pytest.mark.integration
-def test_get_event_by_id_not_found(client):
+@pytest.mark.asyncio
+async def test_get_event_by_id_not_found(async_client: AsyncClient):
     """Test GET /events/{event_id} with non-existent ID returns 404."""
     from uuid import uuid4
 
     fake_id = str(uuid4())
-    response = client.get(f"/api/v1/events/{fake_id}")
+    response = await async_client.get(f"/api/v1/events/{fake_id}")
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
 
 
-@pytest.mark.integration
-def test_post_events_invalid_coordinates(client):
+@pytest.mark.asyncio
+async def test_post_events_invalid_coordinates(async_client: AsyncClient, auth_headers: dict):
     """Test that invalid coordinates are rejected."""
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
@@ -313,15 +316,15 @@ def test_post_events_invalid_coordinates(client):
         },
     }
 
-    response = client.post("/api/v1/events/", json=payload)
+    response = await async_client.post("/api/v1/events/", json=payload, headers=auth_headers)
 
     assert response.status_code == 422
 
 
-@pytest.mark.integration
-def test_health_check_endpoint(client):
+@pytest.mark.asyncio
+async def test_health_check_endpoint(async_client: AsyncClient):
     """Test /health endpoint."""
-    response = client.get("/health")
+    response = await async_client.get("/health")
 
     assert response.status_code == 200
     data = response.json()
@@ -330,10 +333,10 @@ def test_health_check_endpoint(client):
     assert "version" in data
 
 
-@pytest.mark.integration
-def test_root_endpoint(client):
+@pytest.mark.asyncio
+async def test_root_endpoint(async_client: AsyncClient):
     """Test root / endpoint."""
-    response = client.get("/")
+    response = await async_client.get("/")
 
     assert response.status_code == 200
     data = response.json()

@@ -1,19 +1,23 @@
+version: "3.9"
+
 services:
   # PostgreSQL Database with PostGIS
   db:
     image: postgis/postgis:16-3.4
     container_name: nearbytix_db
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: nearbytix_user
-      POSTGRES_PASSWORD: nearbytix_pass
-      POSTGRES_DB: nearbytix
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nearbytix_user -d nearbytix"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,15 +44,13 @@ services:
   api:
     image: samuelogboye/nearbytix:latest
     container_name: nearbytix_api
-    command: sh -c "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    env_file:
+      - .env
+    command: >
+      sh -c "python -m alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://nearbytix_user:nearbytix_pass@db:5432/nearbytix
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DEBUG=False
     depends_on:
       db:
         condition: service_healthy
@@ -62,12 +64,9 @@ services:
   celery_worker:
     image: samuelogboye/nearbytix:latest
     container_name: nearbytix_celery_worker
+    env_file:
+      - .env
     command: celery -A app.celery_app worker --loglevel=info
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://nearbytix_user:nearbytix_pass@db:5432/nearbytix
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
@@ -81,12 +80,9 @@ services:
   celery_beat:
     image: samuelogboye/nearbytix:latest
     container_name: nearbytix_celery_beat
+    env_file:
+      - .env
     command: celery -A app.celery_app beat --loglevel=info
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://nearbytix_user:nearbytix_pass@db:5432/nearbytix
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy

@@ -42,6 +42,9 @@ async def test_user_email_uniqueness(db_session):
     with pytest.raises(Exception):  # IntegrityError for duplicate email
         await db_session.commit()
 
+    # Rollback the session after the expected error
+    await db_session.rollback()
+
 
 @pytest.mark.unit
 @pytest.mark.asyncio

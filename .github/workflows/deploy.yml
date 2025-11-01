@@ -1,17 +1,18 @@
-name: Build Docker images
+name: Build and Deploy to DigitalOcean
 
 on:
   push:
     branches: ["main"]
 
 jobs:
-  build-and-push-dockerfile-image:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Build & push Docker image
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
@@ -26,4 +27,36 @@ jobs:
           push: true
           tags: |
             samuelogboye/nearbytix:latest
-          platforms: linux/amd64   
+            samuelogboye/nearbytix:${{ github.sha }}
+          platforms: linux/amd64
+
+      # Deploy to droplet
+      - name: Deploy
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            APP_DIR=/root/NearbyTix
+
+            echo "Navigating to app directory..."
+            if [ ! -d "$APP_DIR" ]; then
+              echo "App not found — cloning fresh copy..."
+              git clone https://github.com/samuelogboye/NearbyTix.git $APP_DIR
+            fi
+
+            cd $APP_DIR
+
+            echo "Fetching latest code changes..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "Pulling latest Docker image..."
+            docker-compose -f docker-compose.prod.yml pull
+
+            echo "Recreating containers..."
+            docker-compose -f docker-compose.prod.yml up -d
+
+            echo "Cleaning up old images..."
+            docker image prune -af

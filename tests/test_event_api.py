@@ -324,7 +324,7 @@ async def test_post_events_invalid_coordinates(async_client: AsyncClient, auth_h
 
 @pytest.mark.asyncio
 async def test_health_check_endpoint(async_client: AsyncClient):
-    """Test /health endpoint."""
+    """Test /health endpoint with database connectivity check."""
     response = await async_client.get("/health")
 
     assert response.status_code == 200
@@ -332,6 +332,11 @@ async def test_health_check_endpoint(async_client: AsyncClient):
     assert data["status"] == "healthy"
     assert "app_name" in data
     assert "version" in data
+
+    # Check database connectivity status
+    assert "database" in data
+    assert data["database"]["connected"] is True
+    assert data["database"]["status"] == "healthy"
 
 
 @pytest.mark.asyncio

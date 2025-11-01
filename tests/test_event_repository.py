@@ -1,6 +1,7 @@
 """Tests for event repository."""
 import pytest
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from app.repositories.event_repository import EventRepository
 from app.models.event import Event
@@ -8,7 +9,7 @@ from app.models.event import Event
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_create_event_returns_event(db_session):
+async def test_create_event_returns_event(db_session, test_user):
     """Test that create() returns an event with ID."""
     repository = EventRepository(db_session)
 
@@ -16,6 +17,7 @@ async def test_create_event_returns_event(db_session):
     end_time = start_time + timedelta(hours=3)
 
     event = await repository.create(
+        creator_id=test_user.id,
         title="Test Event",
         description="Test Description",
         start_time=start_time,
@@ -39,14 +41,16 @@ async def test_create_event_returns_event(db_session):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_get_event_by_id_found(db_session):
+async def test_get_event_by_id_found(db_session, test_user):
     """Test getting an event by ID when it exists."""
     repository = EventRepository(db_session)
+    # Use test_user.id instead
 
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
 
     created_event = await repository.create(
+        creator_id=test_user.id,
         title="Test Event",
         start_time=start_time,
         end_time=end_time,
@@ -85,9 +89,10 @@ async def test_get_event_by_id_not_found(db_session):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_get_all_events_with_pagination(db_session):
+async def test_get_all_events_with_pagination(db_session, test_user):
     """Test getting all events with pagination."""
     repository = EventRepository(db_session)
+    # Use test_user.id instead
 
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
@@ -95,6 +100,7 @@ async def test_get_all_events_with_pagination(db_session):
     # Create 5 events
     for i in range(5):
         await repository.create(
+            creator_id=test_user.id,
             title=f"Event {i}",
             start_time=start_time + timedelta(days=i),
             end_time=end_time + timedelta(days=i),
@@ -131,14 +137,16 @@ async def test_get_all_events_empty_database(db_session):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_get_all_events_upcoming_only(db_session):
+async def test_get_all_events_upcoming_only(db_session, test_user):
     """Test getting only upcoming events."""
     repository = EventRepository(db_session)
+    # Use test_user.id instead
 
     # Create past event
     past_start = datetime.now(timezone.utc) - timedelta(days=7)
     past_end = past_start + timedelta(hours=3)
     await repository.create(
+        creator_id=test_user.id,
         title="Past Event",
         start_time=past_start,
         end_time=past_end,
@@ -157,6 +165,7 @@ async def test_get_all_events_upcoming_only(db_session):
     future_start = datetime.now(timezone.utc) + timedelta(days=7)
     future_end = future_start + timedelta(hours=3)
     await repository.create(
+        creator_id=test_user.id,
         title="Future Event",
         start_time=future_start,
         end_time=future_end,
@@ -180,9 +189,10 @@ async def test_get_all_events_upcoming_only(db_session):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_count_all_events(db_session):
+async def test_count_all_events(db_session, test_user):
     """Test counting all events."""
     repository = EventRepository(db_session)
+    # Use test_user.id instead
 
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
@@ -190,6 +200,7 @@ async def test_count_all_events(db_session):
     # Create 3 events
     for i in range(3):
         await repository.create(
+            creator_id=test_user.id,
             title=f"Event {i}",
             start_time=start_time,
             end_time=end_time,
@@ -211,14 +222,16 @@ async def test_count_all_events(db_session):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_increment_tickets_sold(db_session):
+async def test_increment_tickets_sold(db_session, test_user):
     """Test incrementing tickets_sold counter."""
     repository = EventRepository(db_session)
+    # Use test_user.id instead
 
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
 
     event = await repository.create(
+        creator_id=test_user.id,
         title="Test Event",
         start_time=start_time,
         end_time=end_time,
@@ -251,14 +264,16 @@ async def test_increment_tickets_sold(db_session):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_decrement_tickets_sold(db_session):
+async def test_decrement_tickets_sold(db_session, test_user):
     """Test decrementing tickets_sold counter."""
     repository = EventRepository(db_session)
+    # Use test_user.id instead
 
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
 
     event = await repository.create(
+        creator_id=test_user.id,
         title="Test Event",
         start_time=start_time,
         end_time=end_time,
@@ -290,14 +305,16 @@ async def test_decrement_tickets_sold(db_session):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_decrement_tickets_sold_does_not_go_negative(db_session):
+async def test_decrement_tickets_sold_does_not_go_negative(db_session, test_user):
     """Test that tickets_sold doesn't go below 0."""
     repository = EventRepository(db_session)
+    # Use test_user.id instead
 
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
 
     event = await repository.create(
+        creator_id=test_user.id,
         title="Test Event",
         start_time=start_time,
         end_time=end_time,
@@ -325,14 +342,16 @@ async def test_decrement_tickets_sold_does_not_go_negative(db_session):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_delete_event(db_session):
+async def test_delete_event(db_session, test_user):
     """Test deleting an event."""
     repository = EventRepository(db_session)
+    # Use test_user.id instead
 
     start_time = datetime.now(timezone.utc) + timedelta(days=7)
     end_time = start_time + timedelta(hours=3)
 
     event = await repository.create(
+        creator_id=test_user.id,
         title="Test Event",
         start_time=start_time,
         end_time=end_time,

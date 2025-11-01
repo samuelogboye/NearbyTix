@@ -71,14 +71,15 @@ def test_all_models_in_metadata():
 async def test_session_rollback_on_error(db_session):
     """Test that session rollback works on error."""
     from app.models import User
+    from app.utils.auth import hash_password
 
     # Create a user
-    user = User(name="Test User", email="test@example.com")
+    user = User(name="Test User", email="test@example.com", hashed_password=hash_password("testpassword"))
     db_session.add(user)
     await db_session.commit()
 
     # Try to create duplicate user (should fail on unique email constraint)
-    duplicate_user = User(name="Another User", email="test@example.com")
+    duplicate_user = User(name="Another User", email="test@example.com", hashed_password=hash_password("testpassword"))
     db_session.add(duplicate_user)
 
     with pytest.raises(Exception):

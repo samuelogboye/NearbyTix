@@ -1,11 +1,13 @@
 """FastAPI application entry point."""
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import init_db, close_db
+from app.database import init_db, close_db, get_db
 from app.api import events, tickets, users, recommendations, auth
 
 
@@ -49,20 +51,49 @@ app.add_middleware(
 
 # Health check endpoint
 @app.get("/health", tags=["health"])
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_db)):
     """
-    Health check endpoint.
+    Health check endpoint with database connectivity check.
+
+    Args:
+        db: Database session
 
     Returns:
-        Health status
+        Health status including database connectivity
     """
-    return JSONResponse(
-        content={
-            "status": "healthy",
-            "app_name": settings.APP_NAME,
-            "version": settings.APP_VERSION,
+    health_status = {
+        "status": "healthy",
+        "app_name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "database": {
+            "connected": False,
+            "status": "unknown"
         }
-    )
+    }
+
+    # Check database connectivity
+    try:
+        # Execute a simple query to verify database connection
+        result = await db.execute(text("SELECT 1"))
+        result.scalar()
+
+        health_status["database"]["connected"] = True
+        health_status["database"]["status"] = "healthy"
+
+        return JSONResponse(
+            status_code=200,
+            content=health_status
+        )
+    except Exception as e:
+        # Database connection failed
+        health_status["status"] = "unhealthy"
+        health_status["database"]["connected"] = False
+        health_status["database"]["status"] = f"error: {str(e)}"
+
+        return JSONResponse(
+            status_code=503,
+            content=health_status
+        )
 
 
 @app.get("/", tags=["root"])

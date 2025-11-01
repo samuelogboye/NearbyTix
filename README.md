@@ -366,8 +366,6 @@ See `.env.example` for configuration options. Key settings:
 
 🐳 **Docker Ready**: Single command deployment
 
-📚 **Well Documented**: Comprehensive guides and inline docs
-
 ✅ **Production Ready**: Error handling, validation, logging
 
 
